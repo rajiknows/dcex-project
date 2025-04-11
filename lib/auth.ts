@@ -3,7 +3,15 @@ import GoogleProvider from "next-auth/providers/google";
 import type { NextAuthConfig, Session, User as NextAuthUser } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/app/db";
-import { Keypair } from "@solana/web3.js";
+import {
+    Keypair,
+    Connection,
+    clusterApiUrl,
+} from "@solana/web3.js";
+import { airdropDevnetSol } from "./airdrop";
+
+// --- Devnet Configuration ---
+const DEVNET_RPC_URL = clusterApiUrl("devnet");
 
 // Define your custom session type
 interface CustomSession extends Session {
@@ -46,47 +54,50 @@ export const authConfig: NextAuthConfig = {
     events: {
         async createUser(message: { user: NextAuthUser }) {
             const user = message.user;
-
-            // Check if user ID exists
             if (!user.id) {
                 console.error("User ID is missing in createUser event");
-                return; // Exit if no user ID
+                return;
             }
 
-            // Generate mainnet keypair
+            // --- Wallet Generation --- 
             const mainnetKeypair = Keypair.generate();
             const mainnetPublicKey = mainnetKeypair.publicKey.toString();
             const mainnetPrivateKey = Array.from(mainnetKeypair.secretKey).join(',');
-
-            // Generate devnet keypair
             const devnetKeypair = Keypair.generate();
             const devnetPublicKey = devnetKeypair.publicKey.toString();
             const devnetPrivateKey = Array.from(devnetKeypair.secretKey).join(',');
+            // -----------------------
 
-            // Create SolWallet entry
-            await prisma.solWallet.create({
-                data: {
-                    userId: user.id,
-                    publicKey: mainnetPublicKey,
-                    privateKey: mainnetPrivateKey,
-                    devnetPublicKey: devnetPublicKey,
-                    devnetPrivateKey: devnetPrivateKey,
-                },
-            });
+            try {
+                 // --- Database Updates ---
+                 await prisma.solWallet.create({
+                    data: {
+                        userId: user.id,
+                        publicKey: mainnetPublicKey,
+                        privateKey: mainnetPrivateKey,
+                        devnetPublicKey: devnetPublicKey,
+                        devnetPrivateKey: devnetPrivateKey,
+                    },
+                 });
+                 await prisma.inrWallet.create({
+                    data: {
+                        userId: user.id,
+                        balance: 0,
+                    },
+                 });
+                 // ------------------------
 
-            // Create default INR wallet (if applicable, adjust as needed)
-            await prisma.inrWallet.create({
-                data: {
-                    userId: user.id,
-                    balance: 0, // Initial balance
-                },
-            });
+                 // --- Devnet SOL Airdrop --- 
+                 console.log(`Initiating Devnet SOL Airdrop for user ${user.id}, pubkey: ${devnetPublicKey}`);
+                 const devnetConnection = new Connection(DEVNET_RPC_URL, "confirmed");
+                 // Call the updated airdrop function
+                 await airdropDevnetSol(devnetPublicKey, devnetConnection);
+                 // --------------------------
 
-             // TODO: Add Devnet Airdrop Logic here
-             // You'll need the devnetPublicKey and a connection to the devnet cluster
-             console.log(`Devnet Airdrop needed for user ${user.id}, pubkey: ${devnetPublicKey}`);
-             // Example: await airdropDevnetSol(devnetPublicKey, 1); // 1 SOL
-             // Example: await airdropDevnetSplToken(usdcMintAddress, devnetPublicKey, 100); // 100 USDC
+            } catch (error) {
+                 console.error(`Failed to create wallets or perform airdrop for user ${user.id}:`, error);
+                 throw new Error("Failed during user wallet creation/airdrop process.");
+            }
         },
     },
     callbacks: {
@@ -133,4 +144,3 @@ export const authConfig: NextAuthConfig = {
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
-// Removed the explicit fetch call as PrismaAdapter handles DB interaction

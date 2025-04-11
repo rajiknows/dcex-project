@@ -1,7 +1,8 @@
-import { Connection } from "@solana/web3.js";
+import { Connection, clusterApiUrl } from "@solana/web3.js";
 import axios from "axios";
 import { SUPPORTED_TOKENS } from "./tokens";
 import { Decimal } from "@prisma/client/runtime/library";
+import { Network } from "@/app/dashboard/page";
 
 let LAST_UPDATED: number | null = null;
 let prices: {
@@ -45,11 +46,20 @@ export const connection = new Connection(
     "https://solana-mainnet.g.alchemy.com/v2/EspGgEsKtp6xdG1-P32lj9raEFUlgXNc",
 );
 
+export const mainnetConnection = new Connection(
+    process.env.MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com",
+    "confirmed",
+);
+
+export const devnetConnection = new Connection(clusterApiUrl("devnet"), "confirmed");
+
 export async function getLivePrice(
     baseMint: string,
     quoteMint: string,
     amount: number,
     decimals: number,
+    network: Network,
+    slippageBps: number
 ): Promise<QuoteResponse> {
     try {
         const response = await axios.post(`${BACKEND_URL}/getquote`, {
@@ -57,11 +67,13 @@ export async function getLivePrice(
             quoteMint,
             amount,
             decimals,
+            network,
+            slippageBps,
         });
         return response.data;
     } catch (error) {
-        console.error("Failed to fetch price:", error);
-        throw new Error("Failed to fetch price");
+        console.error(`Failed to fetch price on ${network} with slippage ${slippageBps}:`, error);
+        throw new Error(`Failed to fetch price quote for ${network}`);
     }
 }
 

@@ -29,7 +29,10 @@ export async function GET() {
       name: userinfo.name,
       profilePicture: userinfo.profilePicture,
       solWallet: userinfo.SolWallet
-        ? { publicKey: userinfo.SolWallet.publicKey }
+        ? { 
+            publicKey: userinfo.SolWallet.publicKey,
+            devnetPublicKey: userinfo.SolWallet.devnetPublicKey
+          }
         : null,
       inrBalance: userinfo.InrWallet ? userinfo.InrWallet.balance : 0,
     });

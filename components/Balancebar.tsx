@@ -1,20 +1,21 @@
 import { CardContent } from "./ui/card";
+import { TokenWithbalance } from "@/app/hooks/useToken";
+
+interface BalanceBarProps {
+    tokenBalances: { totalBalance: number; tokens: TokenWithbalance[] } | null;
+    copied: boolean;
+    setCopied: (value: boolean) => void;
+    user: any;
+    publicAddress: string;
+}
 
 export function BalanceBar({
     tokenBalances,
     copied,
     setCopied,
     user,
-}: {
-    tokenBalances: { totalBalance: number; tokens: any[] } | null;
-    copied: boolean;
-    setCopied: (value: boolean) => void;
-    user: {
-        solWallet: {
-            publicKey: [];
-        };
-    };
-}) {
+    publicAddress,
+}: BalanceBarProps) {
     return (
         <CardContent className="space-y-6">
             <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-900 rounded-lg shadow-sm">
@@ -31,7 +32,7 @@ export function BalanceBar({
                         Wallet:
                     </span>
                     <span className="text-sm font-mono text-gray-800 dark:text-gray-200">
-                        {user.solWallet.publicKey.slice(0, 5)}...
+                        {publicAddress ? `${publicAddress.substring(0, 4)}...${publicAddress.substring(publicAddress.length - 4)}` : 'N/A'}
                     </span>
                     {copied && (
                         <span className="text-sm text-green-500 dark:text-green-400">
@@ -46,11 +47,11 @@ export function BalanceBar({
                             height={16}
                             className="cursor-pointer opacity-70 hover:opacity-100"
                             onClick={() => {
-                                navigator.clipboard.writeText(
-                                    user.solWallet.publicKey,
-                                );
-                                setCopied(true);
-                                setTimeout(() => setCopied(false), 2000);
+                                if (publicAddress) {
+                                    navigator.clipboard.writeText(publicAddress);
+                                    setCopied(true);
+                                    setTimeout(() => setCopied(false), 2000);
+                                }
                             }}
                         />
                     )}

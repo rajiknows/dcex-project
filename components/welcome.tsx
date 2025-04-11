@@ -1,6 +1,12 @@
 import Image from "next/image";
 import { CardHeader } from "./ui/card";
-export function Welcome({ user }) {
+
+interface WelcomeProps {
+    user: any;
+    publicAddress: string;
+}
+
+export function Welcome({ user, publicAddress }: WelcomeProps) {
     return (
         <CardHeader className="space-y-1">
             <div className="flex items-center space-x-2">
@@ -16,7 +22,7 @@ export function Welcome({ user }) {
                 </h2>
             </div>
             <p className="text-sm text-muted-foreground">
-                Your Account Overview
+                Your Wallet: {publicAddress ? `${publicAddress.substring(0, 4)}...${publicAddress.substring(publicAddress.length - 4)}` : 'N/A'} 
             </p>
         </CardHeader>
     );

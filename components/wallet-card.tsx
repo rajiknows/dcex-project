@@ -9,11 +9,15 @@ import { ProfileCard } from "./profilecard";
 import { SwapInterface } from "./swap-interface";
 import { BalanceBar } from "./Balancebar";
 import { Welcome } from "./welcome";
+import { Network } from "@/app/dashboard/page";
 
-export default function WalletCard({ user }) {
+export default function WalletCard({ user, network }: { user: any, network: Network }) {
     const [copied, setCopied] = useState(false);
-    const publicAddress = user.solWallet.publicKey;
-    const { tokenBalances, loading } = useTokens(publicAddress);
+    const { tokenBalances, loading } = useTokens(user, network);
+    
+    const publicAddress = network === 'devnet' 
+        ? user?.solWallet?.devnetPublicKey 
+        : user?.solWallet?.publicKey;
 
     const [viewMode, setViewMode] = useState<"default" | "swap" | "send">(
         "default",
@@ -21,12 +25,13 @@ export default function WalletCard({ user }) {
 
     return (
         <Card className="w-full max-w-2xl bg-white">
-            <Welcome user={user} />
+            <Welcome user={user} publicAddress={publicAddress} />
             <BalanceBar
                 tokenBalances={tokenBalances}
                 copied={copied}
                 setCopied={setCopied}
                 user={user}
+                publicAddress={publicAddress}
             />
 
             <CardContent className="space-y-6">
@@ -71,7 +76,7 @@ export default function WalletCard({ user }) {
                                     </ul>
                                 ) : (
                                     <p className="text-center text-muted-foreground">
-                                        No tokens found
+                                        No tokens found for {network}.
                                     </p>
                                 )}
                             </TabsContent>
@@ -92,7 +97,7 @@ export default function WalletCard({ user }) {
                         </Tabs>
                     </>
                 ) : (
-                    <SwapInterface onBack={() => setViewMode("default")} />
+                    <SwapInterface onBack={() => setViewMode("default")} network={network} />
                 )}
             </CardContent>
         </Card>

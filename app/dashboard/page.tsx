@@ -2,13 +2,14 @@
 import { RecoilRoot } from "recoil";
 import WalletCard from "@/components/wallet-card";
 import { useEffect, useState } from "react";
+import { BACKEND_URL } from "@/lib/constants";
 
 export default function Dashboard() {
     const [userInfo, setUserInfo] = useState(null);
 
     useEffect(() => {
         async function fetchUserInfo() {
-            const res = await fetch("/api/getinfo");
+            const res = await fetch(`${BACKEND_URL}/getinfo`);
             if (res.ok) {
                 const data = await res.json();
                 setUserInfo(data);

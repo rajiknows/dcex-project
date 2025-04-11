@@ -30,6 +30,8 @@ model SolWallet {
     id         String @id @default(uuid())
     publicKey  String @unique
     privateKey String @unique
+    devnetPublicKey  String @unique
+    devnetPrivateKey String @unique
     userId     String @unique
     user       User   @relation(fields: [userId], references: [id])
 }

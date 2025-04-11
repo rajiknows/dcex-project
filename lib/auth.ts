@@ -1,8 +1,9 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import type { NextAuthConfig, Session } from "next-auth";
-import type { Account } from "next-auth";
-import type { User as NextAuthUser } from "next-auth";
+import type { NextAuthConfig, Session, User as NextAuthUser } from "next-auth";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import { prisma } from "@/app/db";
+import { Keypair } from "@solana/web3.js";
 
 // Define your custom session type
 interface CustomSession extends Session {
@@ -16,6 +17,7 @@ interface CustomSession extends Session {
 }
 
 export const authConfig: NextAuthConfig = {
+    adapter: PrismaAdapter(prisma),
     providers: [
         GoogleProvider({
             clientId: process.env.AUTH_GOOGLE_ID ?? "",
@@ -26,79 +28,109 @@ export const authConfig: NextAuthConfig = {
                     prompt: "select_account",
                 },
             },
+            // Ensure email and name are always requested
+            profile(profile) {
+                return {
+                    id: profile.sub,
+                    name: profile.name,
+                    email: profile.email,
+                    image: profile.picture,
+                };
+            },
         }),
     ],
     secret: process.env.NEXTAUTH_SECRET,
     session: {
         strategy: "jwt",
     },
-    callbacks: {
-        async jwt({ token, account, user }) {
-            if (account && user) {
-                // After successful sign in via Google, fetch or create user and get the id
-                try {
-                    const response = await fetch(
-                        `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/auth/register`,
-                        {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                            },
-                            body: JSON.stringify({
-                                email: user.email,
-                                name: user.name,
-                                provider: account.provider,
-                                providerAccountId: account.providerAccountId,
-                            }),
-                        },
-                    );
+    events: {
+        async createUser(message: { user: NextAuthUser }) {
+            const user = message.user;
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        token.uid = data.user.id; // Get the user ID from the backend response
-                    } else {
-                        console.error(
-                            "Failed to register/login user on backend:",
-                            response.status,
-                        );
-                        // Optionally handle the error, e.g., by setting token.error = true
-                    }
-                } catch (error) {
-                    console.error("Error communicating with backend:", error);
-                    // Optionally handle the error
-                }
+            // Check if user ID exists
+            if (!user.id) {
+                console.error("User ID is missing in createUser event");
+                return; // Exit if no user ID
+            }
+
+            // Generate mainnet keypair
+            const mainnetKeypair = Keypair.generate();
+            const mainnetPublicKey = mainnetKeypair.publicKey.toString();
+            const mainnetPrivateKey = Array.from(mainnetKeypair.secretKey).join(',');
+
+            // Generate devnet keypair
+            const devnetKeypair = Keypair.generate();
+            const devnetPublicKey = devnetKeypair.publicKey.toString();
+            const devnetPrivateKey = Array.from(devnetKeypair.secretKey).join(',');
+
+            // Create SolWallet entry
+            await prisma.solWallet.create({
+                data: {
+                    userId: user.id,
+                    publicKey: mainnetPublicKey,
+                    privateKey: mainnetPrivateKey,
+                    devnetPublicKey: devnetPublicKey,
+                    devnetPrivateKey: devnetPrivateKey,
+                },
+            });
+
+            // Create default INR wallet (if applicable, adjust as needed)
+            await prisma.inrWallet.create({
+                data: {
+                    userId: user.id,
+                    balance: 0, // Initial balance
+                },
+            });
+
+             // TODO: Add Devnet Airdrop Logic here
+             // You'll need the devnetPublicKey and a connection to the devnet cluster
+             console.log(`Devnet Airdrop needed for user ${user.id}, pubkey: ${devnetPublicKey}`);
+             // Example: await airdropDevnetSol(devnetPublicKey, 1); // 1 SOL
+             // Example: await airdropDevnetSplToken(usdcMintAddress, devnetPublicKey, 100); // 100 USDC
+        },
+    },
+    callbacks: {
+        async jwt({ token, user }) {
+            // The adapter handles linking user and account. User object passed on sign-in.
+            if (user?.id) {
+                token.uid = user.id;
+            } else if (token.sub) {
+                 // For subsequent requests, use token.sub (which should be the user ID)
+                 // The adapter ensures the user exists, so fetching again might be redundant unless needed
+                 // token.uid = token.sub; // Directly use sub if it's guaranteed to be user ID
+                 // Fetch user only if necessary or for verification
+                 const dbUser = await prisma.user.findUnique({
+                     where: { id: token.sub },
+                 });
+                 if (dbUser) {
+                     token.uid = dbUser.id;
+                 }
             }
             return token;
         },
         async session({ session, token }) {
             if (session.user && token.uid) {
+                const customUser: CustomSession['user'] = {
+                    email: session.user.email ?? '',
+                    name: session.user.name ?? '',
+                    image: session.user.image ?? '',
+                    uid: token.uid as string,
+                };
                 return {
                     ...session,
-                    user: {
-                        ...session.user,
-                        uid: token.uid as string,
-                    },
+                    user: customUser,
                 } as CustomSession;
             }
             return session;
         },
-        async signIn({
-            user,
-            account,
-        }: {
-            user: NextAuthUser;
-            account: Account | null;
-        }) {
-            if (
-                !user.email ||
-                !account?.providerAccountId ||
-                account.provider !== "google"
-            ) {
-                return false; // Only allow Google sign-in to trigger backend registration here
-            }
-            return true; // Let the jwt callback handle the backend interaction
-        },
+         // signIn callback is usually handled by the adapter, keep minimal
+         // async signIn({ user, account }) {
+         //    // Custom logic before sign-in completes (e.g., check allowlist)
+         //    // return true; // Allow sign-in
+         // }
     },
 };
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+
+// Removed the explicit fetch call as PrismaAdapter handles DB interaction
